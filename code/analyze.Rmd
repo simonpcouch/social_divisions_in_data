@@ -1,0 +1,332 @@
+---
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Data Analysis
+
+This file documents the data analysis process and makes of datasets resulting from `code/grab_data.Rmd`.
+
+First, loading in relevant datasets and packages.
+
+```{r load, message = FALSE, warning = FALSE}
+# loading packages --------------------------------------------------------
+library(tidyverse)
+library(infer)
+library(xtable)
+
+
+# loading data ------------------------------------------------------------
+load("data/divisions.Rda")
+datasets_by_package <- read_csv("data/datasets_by_package.csv")
+```
+
+Then, building some plots for the paper. The first addresses Hypothesis 2.
+
+```{r common-entries-plot, warning = FALSE, message = FALSE}
+# build the plot
+common_entries_plot <- divisions %>%
+  filter(column %in% c("gender", "sex", "race", "ethnic")) %>%
+  #drop_na(clean_entry) %>%
+  mutate(clean_column = case_when(column == "gender" ~ "Gender",
+                                  column == "sex" ~ "Sex",
+                                  column == "race" ~ "Race",
+                                  column == "ethnic" ~ "Ethnicity"), 
+         clean_column = factor(clean_column,
+                               levels = c("Sex", "Gender", "Race", "Ethnicity")),
+         purpose = case_when(intent == "biological" ~ "Biological",
+                             TRUE ~ "Other"),
+         clean_entry_bin = case_when(
+           clean_entry == "female" & column %in% c("gender", "sex") ~ "Female",
+           clean_entry == "male" & column %in% c("gender", "sex") ~ "Male",
+           clean_entry == "black" & column %in% c("race", "ethnic") ~ "Black",
+           clean_entry == "white" & column %in% c("race", "ethnic") ~ "White",
+           TRUE ~ "Other"),
+         clean_entry_bin = factor(clean_entry_bin,
+                                  levels = c("Female", "Male", "Black", "White", "Other"))) %>%
+  group_by(clean_column, clean_entry_bin) %>%
+  summarize(n = n()) %>%
+  mutate(prop = n/sum(n, na.rm = TRUE)) %>%
+  #arrange(desc(n)) %>%
+  ungroup() %>%
+  mutate(column_group = case_when(clean_column %in% c("Gender", "Sex") ~ "Sex/Gender",
+                                  clean_column %in% c("Race", "Ethnicity") ~ "Race/Ethnicity"),
+         column_group = factor(column_group,
+                               levels = c("Sex/Gender", "Race/Ethnicity"),
+                               labels = c("  ", " "))) %>%
+  ggplot() +
+  aes(x = clean_entry_bin, y = prop, fill = clean_column) +
+  geom_col(position = "dodge") +
+  theme_minimal() +
+  labs(y = "Proportion", 
+       x = "Column Entry",
+       fill = "Column Type") +
+  facet_wrap(~column_group, nrow = 2, scales = "free") +
+  scale_fill_manual(values = c("#003acc", "#89a8f5",
+                               "#06991f", "#8bd698")) +
+  theme(text = element_text(family = "serif"))
+
+# check it out!
+common_entries_plot
+
+# aaaaand save it
+ggsave(plot = common_entries_plot, 
+       filename = "paper/figures/common_entries.png",
+       width = 5, height = 3, units = "in")
+```
+
+The second plot addresses Hypothesis 1. 
+
+```{r}
+# build the plot
+common_names_plot <- divisions %>%
+  mutate(purpose = case_when(intent == "biological" ~ "Biological",
+                             TRUE ~ "Other"),
+         clean_column = case_when(column == "ethnic" ~ "Ethnicity",
+                                  column == "female" ~ "other",
+                                  column == "male" ~ "other",
+                                  column == "gender" ~ "Gender",
+                                  column == "race" ~ "Race",
+                                  column == "sex" ~ "Sex")) %>%
+  filter(clean_column != "other") %>%
+  group_by(purpose, clean_column) %>%
+  summarize(n = n()) %>%
+  ungroup() %>%
+  mutate(column_group = case_when(
+    clean_column %in% c("Sex", "Gender") ~ "Sex/Gender",
+    clean_column %in% c("Race", "Ethnicity") ~ "Race/Ethnicity"),
+         column_group = factor(column_group,
+                               levels = c("Sex/Gender", "Race/Ethnicity"),
+                               labels = c("", " ")),
+         clean_column = factor(clean_column,
+                               levels = c("Sex", "Gender", "Race", "Ethnicity"))
+    ) %>%
+  ggplot() +
+  aes(x = purpose, y = n, fill = clean_column) +
+  scale_fill_manual(values = c("#003acc", "#89a8f5",
+                               "#06991f", "#8bd698")) +
+  geom_col(position = "fill") +
+  facet_wrap(~column_group, nrow = 1, scales = "free") +
+  labs(x = "Dataset Purpose", y = "Proportion", fill = "Column Name") +
+  theme_minimal()
+
+common_names_plot
+
+# aaaaand save it
+ggsave(plot = common_names_plot, 
+       filename = "paper/figures/common_names.png",
+       width = 6, height = 4, units = "in")
+```
+
+In addition to plotting, we also want to build some tables to describe the basic structure of the data to be included in the appendix.
+
+A table giving the number of occurences of each entry by purpose (biological or not).
+
+```{r n-entries}
+n_entries_prep <- divisions %>%
+  mutate(purpose = case_when(intent == "biological" ~ "Biological",
+                             TRUE ~ "Other")) %>%  
+  mutate(clean_entry_bin = case_when(clean_entry == "female" ~ "Female",
+                                     clean_entry == "male" ~ "Male",
+                                     clean_entry == "black" ~ "Black",
+                                     clean_entry == "white" ~ "White",
+                                     TRUE ~ "Other"),
+         clean_column = case_when(column == "ethnic" ~ "Ethnicity",
+                                  column == "female" ~ "other",
+                                  column == "male" ~ "other",
+                                  column == "gender" ~ "Gender",
+                                  column == "race" ~ "Race",
+                                  column == "sex" ~ "Sex")) %>%
+  filter(clean_column != "other")
+
+n_entries_sex_gender <- n_entries_prep %>%
+  filter(clean_column %in% c("Gender", "Sex"),
+         clean_entry_bin %in% c("Male", "Female", "Other")) %>%
+  group_by(clean_entry_bin, clean_column, purpose) %>%
+  summarize(n = n()) %>%
+  unite(col = column_purpose, clean_column, purpose) %>%
+  pivot_wider(id_cols = clean_entry_bin, 
+              names_from = column_purpose, 
+              values_from = n) %>%
+  select(1, 4, 5, 2, 3)
+
+colnames(n_entries_sex_gender) <- c("Entry",
+                                    "Sex",
+                                    "Sex ",
+                                    "Gender",
+                                    "Gender ")
+
+# write this dataframe to a table
+print(xtable(n_entries_sex_gender),
+      file = "paper/figures/number_entries_by_sex_gender.tex",
+      include.rownames = FALSE,
+      hline.after = c(0, 1))
+
+n_entries_race_ethnicity <- n_entries_prep %>%
+  filter(clean_column %in% c("Ethnicity", "Race"),
+         clean_entry_bin %in% c("Black", "White", "Other")) %>%
+  group_by(clean_entry_bin, clean_column, purpose) %>%
+  summarize(n = n()) %>%
+  unite(col = column_purpose, clean_column, purpose) %>%
+  pivot_wider(id_cols = clean_entry_bin, 
+              names_from = column_purpose, 
+              values_from = n) %>%
+  select(1, 5, 3, 4, 2) %>%
+  ungroup() %>%
+  mutate_all(~replace(., is.na(.), 0))
+
+# write this dataframe to a table
+colnames(n_entries_race_ethnicity) <- c("Entry",
+                                    "Race",
+                                    "Race ",
+                                    "Ethnicity",
+                                    "Ethnicity ")
+
+# write this dataframe to a table
+print(xtable(n_entries_race_ethnicity),
+      file = "paper/figures/number_entries_by_race_ethnicity.tex",
+      include.rownames = FALSE,
+      hline.after = c(0, 1))
+```
+
+A table giving the number of datasets containing each of the different column types, by purpose (biological or not).
+
+```{r n-datasets}
+n_datasets <- divisions %>%
+  mutate(purpose = case_when(intent == "biological" ~ "Biological",
+                             TRUE ~ "Other"),
+         clean_column = case_when(column == "ethnic" ~ "Ethnicity",
+                                  column == "female" ~ "other",
+                                  column == "male" ~ "other",
+                                  column == "gender" ~ "Gender",
+                                  column == "race" ~ "Race",
+                                  column == "sex" ~ "Sex")) %>%
+  filter(clean_column != "other") %>%
+  group_by(purpose, clean_column) %>%
+  summarize(n = n()) %>%
+  pivot_wider(id_cols = purpose, names_from = clean_column, values_from = n) %>%
+  rename(Purpose = purpose) %>%
+  dplyr::select(Purpose, Sex, Gender, Race, Ethnicity)
+
+print(xtable(n_datasets),
+      file = "paper/figures/number_of_datasets_by_group.tex",
+      include.rownames = FALSE,
+      hline.after = c(0, 1))
+```
+
+In addition, we want to carry out some significance tests for our hypotheses. All significance levels are two-sided $\alpha = 0.05$ (except for test statistics with asymmetric distributions, as revelant to Hypothesis 2, in which case we use a one-sided $\alpha = 0.05$.)
+
+First, as for Hypotheses $1(a)$ and $1(b)$.
+
+\textit{Hypothesis 1(a)} Datasets from packages intended for biological research will be more likely to refer to sex than gender, if one or the other is included.
+
+\textit{Hypothesis 1(b)} Datasets from packages intended for biological research will be more likely to refer to race than ethnicity, if one or the other is included.
+
+
+```{r hyp-1}
+# we can make use of the n_datasets dataset to carry out  this hypothesis test 
+# more easily. tidying...
+tidy_n_datasets <- n_datasets %>%
+  pivot_longer(cols = 2:ncol(n_datasets), 
+               names_to = "Variable", 
+               values_to = "Count") %>%
+  uncount(Count)
+
+# first, testing diff props for sex/gender by purpose ------------------------
+null_dist_hypothesis_1a <- tidy_n_datasets %>%
+  filter(Variable %in% c("Sex", "Gender")) %>%
+  specify(Variable ~ Purpose, success = "Sex") %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 5000, type = "permute") %>%
+  calculate(stat = "diff in props", order = c("Biological", "Other"))
+
+
+point_estimate_hypothesis_1a <- tidy_n_datasets %>%
+  filter(Variable %in% c("Sex", "Gender")) %>%
+  specify(Variable ~ Purpose, success = "Sex") %>%
+  calculate(stat = "diff in props", order = c("Biological", "Other"))
+
+null_dist_hypothesis_1a %>%
+  get_p_value(obs_stat = point_estimate_hypothesis_1a, direction = "both")
+
+# then, testing diff props for race/ethnicity by purpose ---------------------
+null_dist_hypothesis_1b <- tidy_n_datasets %>%
+  filter(Variable %in% c("Race", "Ethnicity")) %>%
+  specify(Variable ~ Purpose, success = "Race") %>%
+  hypothesize(null = "independence") %>%
+  generate(reps = 5000, type = "permute") %>%
+  calculate(stat = "diff in props", order = c("Biological", "Other"))
+
+point_estimate_hypothesis_1b <- tidy_n_datasets %>%
+  filter(Variable %in% c("Race", "Ethnicity")) %>%
+  specify(Variable ~ Purpose, success = "Race") %>%
+  calculate(stat = "diff in props", order = c("Biological", "Other"))
+
+null_dist_hypothesis_1b %>%
+  get_p_value(obs_stat = point_estimate_hypothesis_1b, direction = "both")
+```
+
+
+Next, testing Hypotheses $2(a)$ and $2(b)$.
+
+\textit{Hypothesis 2(a)} The distribution of values in columns named "sex" will not differ from that of columns named "gender." Namely, the frequencies of the entries "male," "female," and any others will not be different.
+
+```{r hyp-2a}
+# first, building a dataset for hypothesis 2a
+divisions_hypothesis_2a <- divisions %>%
+  mutate(clean_entry_bin = case_when(clean_entry == "female" ~ "Female",
+                                     clean_entry == "male" ~ "Male",
+                                     TRUE ~ "Other")) %>%
+  select(column, clean_entry_bin)
+
+# then, finding the proportions for the "expected distribution"
+expected_dist_hypothesis_2a <- divisions_hypothesis_2a %>%
+  filter(column == "sex") %>%
+  group_by(clean_entry_bin) %>%
+  summarize(n = n()) %>%
+  mutate(prop = n/sum(n))
+
+expected_dist_hypothesis_2a
+
+# calculating the observed statistic using these proportions
+observed_stat_hypothesis_2a <- divisions_hypothesis_2a %>%
+  filter(column == "gender") %>%
+  specify(response = clean_entry_bin) %>%
+  hypothesize(null = "point",
+              p = c("Female" = expected_dist_hypothesis_2a$prop[1],
+                    "Male" = expected_dist_hypothesis_2a$prop[2],
+                    "Other" = expected_dist_hypothesis_2a$prop[3])) %>%
+  calculate(stat = "Chisq")
+
+# and then generating the null distribution
+null_distribution_hypothesis_2a <- divisions_hypothesis_2a %>%
+  filter(column == "gender") %>%
+  specify(response = clean_entry_bin) %>%
+  hypothesize(null = "point",
+              p = c("Female" = expected_dist_hypothesis_2a$prop[1],
+                    "Male" = expected_dist_hypothesis_2a$prop[2],
+                    "Other" = expected_dist_hypothesis_2a$prop[3])) %>%
+  generate(reps = 5000, type = "simulate") %>%
+  calculate(stat = "Chisq")
+
+null_distribution_hypothesis_2a %>% 
+  get_p_value(obs_stat = observed_stat_hypothesis_2a,
+              direction = "greater")
+```
+
+\textit{Hypothesis 2(b)} The distribution of values in columns named "race" will not differ from that of columns named "ethnicity." Namely, the frequencies of the entries "black," "white," and any others will not be different.
+
+
+```{r hyp-2b}
+divisions %>%
+  filter(column %in% c("race", "ethnic")) %>%
+  count(clean_entry, column) %>%
+  arrange(column, desc(n))
+```
+
+From this summary, we can see that we have insufficient data to test this hypothesis, as there aren't enough counts in our "black", "white" bins for the ethnicity column. The implementation would look identical to that to test hypothesis $2(a)$.
+
+

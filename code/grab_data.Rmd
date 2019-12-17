@@ -1,0 +1,432 @@
+---
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Building the Dataset
+
+This file documents the workflow to gather the entries in gendered, sexualized, or racialized variables from the Comprehensive R Archive Network (CRAN). The workflow should look something like the following:
+
+* Gather a list of all packages and additional metadata on CRAN
+* Download + install relevant packages
+* Extract metadata about conceptualizations of social divisions housed in package data
+* Uninstall newly downloaded packages (if desired)
+
+This data will later be analyzed to characterize the gender, sex, and racial conceptualizations inflected in the data, both in aggregate and comparatively across package intent.
+
+First, we'll load relevant packages. Several packages are loaded below which provide different functionality to interface with CRAN data.
+
+```{r packages, warning = FALSE, message = FALSE}
+# creating and working with tidy data
+library(tidyverse)
+# webscraping
+library(rvest)
+# some more web tools
+library(RCurl)
+# working with package metadata
+library(vcdExtra)
+# clean datasets easily
+library(janitor)
+```
+
+Now, we want a list of all packages on CRAN.
+
+```{r grab-package-list, cache = TRUE}
+# read in the table of all packages
+raw_pkgs <- read_html("https://cran.r-project.org/web/packages/available_packages_by_name.html") %>%
+  html_node("table") %>%
+  html_table(fill = TRUE, 
+             header = TRUE)
+
+# give the table new column names
+colnames(raw_pkgs) <- c("name", "desc")
+
+# check out the first few rows
+head(raw_pkgs)
+```
+
+Now, we'd like to grab metadata about each of the packages. Specifically, we want to infer intent/purpose of the package (i.e. educational, biological research, social sciences, or other), whether the package contains data, and package popularity.
+
+We'll start about by utilizing CRAN task views to get the most reliable characterization of packages' purposes.
+
+```{r grab-ctv-metadata}
+# inferring purpose/intent: utilize cran task views and 
+# package descriptions.
+
+# make a dataframe of cran task views for relevant package purposes
+ctv_categories <- tibble(name = c("TeachingStatistics",
+                                  "ClinicalTrials",
+                                  "Genetics",
+                                  "MedicalImaging",
+                                  "Pharmacokinetics",
+                                  "Phylogenetics",
+                                  "Psychometrics",
+                                  "SocialSciences"),
+                         category = c("educational",
+                                      "biological",
+                                      "biological",
+                                      "biological",
+                                      "biological",
+                                      "biological",
+                                      "social",
+                                      "social"))
+
+# use this data to open up the relevant html file for the
+# task view and grab packages in that task view
+grab_task_pkgs <- function(task_view) {
+  # put the link together for the task view page
+  url <- paste0("https://cran.r-project.org/web/views/",
+                task_view,
+                ".html")
+  
+  # check whether the url exists
+  if (url.exists(url)) {
+    # grab packages names from the task view
+    pkgs <- read_html(url) %>%
+      html_nodes("a") %>%
+      html_attr("href") %>%
+      as.data.frame() %>%
+      `colnames<-`("url") %>%
+      filter(str_detect(url, "/package")) %>%
+      filter(str_detect(url, "index.html"))
+    
+    # convert the url from a factor to a character vector
+    pkgs$url <- as.character(pkgs$url)
+    
+    # pull out only unique urls
+    pkgs <- pkgs %>% unique.data.frame()
+    
+    # extract the package name from the url.. pull out the 
+    # thing after "packages/" and before "/index.html"
+    extract_pkg <- function(url) {
+      pkg <- strsplit(url, "packages")[[1]][2]
+      
+      pkg <- strsplit(pkg, "index.html")[[1]][1]
+      
+      pkg <- str_replace_all(pkg, "/", "")
+    }
+    
+    pkgs <- pkgs %>% 
+      mutate(package = map_chr(url, extract_pkg),
+             task_view = task_view)
+    
+  } else {
+    paste0(url, " does not exist.")
+  }
+}
+
+# run the grab task packages function on each of the task views
+pkg_task_views <- map(ctv_categories$name, grab_task_pkgs)
+
+# turn the result into a dataframe
+pkg_task_views <- bind_rows(pkg_task_views)
+
+# attach the intent/purpose to the package, where
+# educational < social < biological
+pkg_task_views <- pkg_task_views %>%
+  mutate(intent = case_when(
+    task_view == "TeachingStatistics" ~ "educational",
+    task_view %in% c("Psychometrics", "SocialSciences") ~ "social",
+    TRUE ~ "biological")) %>%
+  select(-url)
+
+# basic summary of package counts by intent (so far)
+pkg_task_views %>%
+  group_by(intent) %>%
+  summarize(n = n()) %>%
+  arrange(desc(n))
+```
+
+Now, we'll make use of the package descriptions to attempt to group the packages by purpose/intent.
+
+```{r grab-desc-metadata}
+# check out the structure of the list of packages
+head(raw_pkgs)
+
+# mutate a new column attempting to group the packages
+# by intent based on the package's description
+raw_pkgs <- raw_pkgs %>%
+  mutate(intent = case_when(
+    str_detect(tolower(desc), "teach") ~ "educational",
+    str_detect(tolower(desc), "educat") ~ "educational",
+    str_detect(tolower(desc), "companion") ~ "educational",
+    str_detect(tolower(desc), "course") ~ "educational",
+    str_detect(tolower(desc), "introduct") ~ "educational",
+    str_detect(tolower(desc), "social") ~ "social",
+    str_detect(tolower(desc), "socio") ~ "social",
+    str_detect(tolower(desc), "elect") ~ "social",
+    str_detect(tolower(desc), "biolog") ~ "biological",
+    str_detect(tolower(desc), "clinic") ~ "biological",
+    str_detect(tolower(desc), "genetic") ~ "biological",
+    str_detect(tolower(desc), "gene ") ~ "biological",
+    str_detect(tolower(desc), "gene-") ~ "biological",
+    str_detect(tolower(desc), "geno") ~ "biological",
+    str_detect(tolower(desc), "pheno") ~ "biological",
+    str_detect(tolower(desc), "medic") ~ "biological",
+    str_detect(tolower(desc), "mri") ~ "biological",
+    str_detect(tolower(desc), "epidem") ~ "biological",
+    str_detect(tolower(desc), "pedigr") ~ "biological",
+    str_detect(tolower(desc), "taxon") ~ "biological",
+    str_detect(tolower(desc), "microarray") ~ "biological",
+    str_detect(tolower(desc), "primer") ~ "biological",
+    str_detect(tolower(desc), "neuro") ~ "biological",
+    TRUE ~ "other"
+  ))
+
+# a quick summary of group sizes by package purpose
+raw_pkgs %>%
+  group_by(intent) %>%
+  summarize(n = n())
+```
+
+We want to combine these two datasets, prioritizing rows with classifications from CRAN task views over those with inferred purpose.
+
+```{r bind-rows-pkgs}
+# select off common columns
+task_view_pkgs_clean <- pkg_task_views %>%
+  select(package, intent)
+
+# select off common columns, prioritize packages
+# without information from task views
+raw_pkgs_clean <- raw_pkgs %>%
+  select(package = name, intent) %>%
+  filter(!package %in% task_view_pkgs_clean$package)
+
+# put the dataframes together!
+pkgs <- bind_rows(task_view_pkgs_clean, 
+                  raw_pkgs_clean)
+
+# remove intermediate objects
+rm(raw_pkgs)
+rm(raw_pkgs_clean)
+rm(pkg_task_views)
+rm(task_view_pkgs_clean)
+rm(grab_task_pkgs)
+
+# again, a quick summary of group sizes by package purpose
+pkg_census_group <- pkgs %>%
+  group_by(intent) %>%
+  dplyr::summarize(n = n())
+
+pkg_census_group
+```
+
+For each of these packages, we want to check whether the package provides data, and if it does, store the names of the provided datasets. Then, for each of the datasets, extract metadata about the columns and unique values in the dataset. For computability, we'll take a sample of packages from the `other` category, but use all packages from the `biological`, `social`, and `educational` groups.
+
+```{r check-for-datasets}
+# pull out non-"other" packages
+pkgs_non_other <- pkgs %>%
+  filter(intent != "other")
+
+# take a sample of the packages from the "other" category
+set.seed(326)
+
+pkgs_other <- pkgs %>%
+  sample_n(1000)
+
+# put the datasets back together into one
+pkgs_sample <- bind_rows(pkgs_non_other, pkgs_other)
+
+# ...and save it
+save(pkgs_sample, file = "data/pkgs_sample.Rda")
+
+# remove intermediate objects
+rm(pkgs_non_other)
+rm(pkgs_other)
+
+# we would like to make a figure describing the sample,
+# giving counts by group
+
+# again, a quick summary of group sizes by package purpose
+pkg_sample_group <- pkgs_sample %>%
+  group_by(intent) %>%
+  dplyr::summarize(n = n())
+
+pkg_sample_group
+
+pkg_group_figure <- bind_cols(pkg_census_group, pkg_sample_group) %>%
+  dplyr::select(intent, n, n1) %>%
+  dplyr::rename("Purpose" = intent,
+                "Census Size" = n,
+                "Sample Size" = n1)
+  
+pkg_group_figure$Purpose <- recode(pkg_group_figure$Purpose, 
+                                   "biological" = "Biological Research")
+pkg_group_figure$Purpose <- recode(pkg_group_figure$Purpose, 
+                                   "educational" = "Educational")
+pkg_group_figure$Purpose <- recode(pkg_group_figure$Purpose, 
+                                   "other" = "Other")
+pkg_group_figure$Purpose <- recode(pkg_group_figure$Purpose, 
+                                   "social" = "Social Science")
+
+pkg_group_figure
+
+# make a table summarizing this distribution
+pkg_group_figure_tex <- xtable(pkg_group_figure,
+                               caption = "Number of Packages by Group")
+
+label(pkg_group_figure_tex) <- "tab:n_by_grp"
+
+print(pkg_group_figure_tex,
+      file = "paper/figures/n_by_package_group.tex",
+      include.rownames = FALSE,
+      timestamp = NULL)
+```
+
+We now load some functions that carry out this procedure:
+
+* `unique_entries_in_column`
+   + inputs: a `dataset` and a `string` to look for (as well as a `perfect_match` string if an exact match is unlikely, but some abbreviation of it is useful)
+   + output: a vector containing the unique values in the most relevant column (or NULL)
+* `check_for_social` (calls `unique_entries_in_column` with correct arguments)
+   + inputs: a `dataset` housed in a package, as well as the `name` of the dataset (to avoid NSE)
+   + output: a tibble, containing unique values of relevant columns in the given dataset
+* `extract_pkg_data` (calls `check_for_social` with correct arguments)
+   + inputs: the `package` name as a character string
+   + output: a tibble, containing unique values of relevant columns of every dataset in the package, as well as which dataset and package the values came from
+
+```{r load-functions}
+source("code/fxns/unique_entries_in_column.R")
+source("code/fxns/check_for_social.R")
+source("code/fxns/extract_pkg_data.R")
+
+# we realias the pipe operator since many of the 
+# packages we'll need to use overwrite it
+
+`%m>%` <- function(lhs, rhs) {
+   parent <- parent.frame()
+   env <- new.env(parent = parent)
+   env$`%>%` <- magrittr::`%>%`
+   expr <- substitute(`%>%`(lhs, rhs))
+   eval(expr, env)
+}
+
+# thanks to greg from 
+# https://community.rstudio.com/t/magrittr-inside-a-package/2033/18
+# for this one!
+```
+
+Now, using these functions, we want to install all of the packages that we've sampled that we don't already have, and then extract all of the package data from each of them. Finally, we can uninstall all of the packages that we didn't have already.
+
+```{r, warning = FALSE, message = FALSE}
+# first, store the packages already installed
+current_packages <- installed.packages()[,1]
+
+# now, install all of the packages in the sample that aren't installed already
+install.packages(pkgs_sample$package[!pkgs_sample$package %in% current_packages])
+
+# grabbing the names of all packages that are installed 
+all_pkgs <- installed.packages()[,1]
+
+# subset out only the ones that were in the sample
+all_pkgs <- unique(all_pkgs[all_pkgs %in% pkgs_sample$package])
+
+# save this list for reproducibility
+save(all_pkgs, file = "data/all_pkgs.Rda")
+
+# now, run the function on all installed packages
+divisions_raw <- lapply(all_pkgs, extract_pkg_data)
+
+# save the raw data
+save(divisions_raw, file = "data/divisions_raw.Rda")
+```
+
+We now want to wrangle this list into a dataframe with entries that are effectively equivalent made *actually* equivalent. (That is, `woman` should be the same as `Woman`, and so on.) We also want a dataset, at the package level, that describes how many datasets are included in the package.
+
+```{r clean-ds}
+# first, make a dataset with the number of datasets per package ---------------
+
+# a function that counts the number of datasets with relevant columns,
+# as well as the total number of relevant columns in the datasets
+count_entries <- function(i) {
+  if (is.null(divisions_raw[[i]])) {
+    # if there is no data... there's no data :-(
+    num_datasets <- 0
+    num_columns <- 0
+  } else {
+    # count the number of unique datasets
+    num_datasets <- length(unique(divisions_raw[[i]]$dataset))
+    
+    # mutate a new variable that is the combination of both the 
+    # dataset and column name
+    divisions_raw[[i]] <- divisions_raw[[i]] %>%
+      unite(col = column_, dataset, column)
+    
+    # count the number of unique relevant columns
+    num_columns <- length(unique(divisions_raw[[i]]$column_))
+  }
+  
+  tibble(name = all_pkgs[i], 
+         number_of_datasets = num_datasets,
+         number_of_columns = num_columns)
+}
+
+# apply this function over each entry in the data
+datasets_by_package <- map(1:length(all_pkgs),
+                           count_entries) %>%
+  bind_rows()
+
+write_csv(datasets_by_package,
+          path = "data/datasets_by_package.csv")
+
+# now, focusing the entries in the datasets --------------------------------
+
+# ...bind the results of divisions_raw to each other!
+divisions <- bind_rows(divisions_raw)
+
+# reattach the package purpose
+divisions <- divisions %>%
+  left_join(pkgs_sample)
+
+# mutate a new column with standardized codes
+divisions <- divisions %>%
+  mutate(clean_entry = trimws(tolower(entry))) %>%
+  mutate(clean_entry = recode(clean_entry, "f" = "female"),
+         clean_entry = recode(clean_entry, "m" = "male"),
+         clean_entry = case_when(
+           # there's a lot going on here... recode entries that are a 1 in columns
+           # called sex, gender, or male as "male"---this reflects the common practice
+           # of encoding males as "successes" in data structures. for the initial sample,
+           # i've checked by hand that this practice doesn't misidentify any entries.
+           column %in% c("sex", "gender", "male") & entry == "1" ~ "male",
+           column %in% c("sex", "gender", "male") & entry == "0" ~ "female",
+           # keep the rest of the entries the same
+           TRUE ~ clean_entry),
+         clean_entry = recode(clean_entry, "men" = "man"),
+         clean_entry = recode(clean_entry, "women" = "woman"),
+         clean_entry = recode(clean_entry, "b" = "black"),
+         clean_entry = recode(clean_entry, "w" = "white"),
+         clean_entry = recode(clean_entry, "1. white" =  "white"),
+         clean_entry = recode(clean_entry, "2. black" = "black"),
+         clean_entry = case_when(
+           # some recodings based on manually inspecting helpfiles
+           dataset %in% c("uswages") & clean_entry == "1" ~ "black",
+           dataset %in% c("uswages") & clean_entry == "0" ~ "white",
+           dataset %in% c("NY_subset", 
+                          "NYcity_subset", 
+                          "birthwt", 
+                          "gss14_simple") & clean_entry == "1" ~ "white",
+           dataset %in% c("birthwt", 
+                          "ex1223", 
+                          "gss14_simple") & clean_entry == "2" ~ "black",
+           dataset %in% c("NY_subset", 
+                          "NYcity_subset", 
+                          "birthwt", 
+                          "gss14_simple") & clean_entry == "3" ~ "other",
+           dataset %in% c("babies") & clean_entry %in% as.character(0:5) ~ "white",
+           dataset %in% c("babies") & clean_entry %in% "7" ~ "black",
+           dataset %in% c("marketing") & clean_entry == "3" ~ "black",
+           dataset %in% c("marketing") & clean_entry == "7" ~ "white",
+           dataset %in% c("marketing") & clean_entry == "8" ~ "other",
+           TRUE ~ clean_entry
+         )) %>%
+  # reorder the columns
+  dplyr::select(intent, package, dataset, column, 
+                actual_column, entry, clean_entry, n)
+
+# write the final dataset to file!
+save(divisions, file = "data/divisions.Rda")
+```

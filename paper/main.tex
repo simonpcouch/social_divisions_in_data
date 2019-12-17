@@ -1,0 +1,60 @@
+\documentclass[12pt]{article}
+
+\usepackage{xcolor}
+\usepackage{caption}
+\usepackage{graphicx}
+\usepackage{setspace}
+\usepackage[margin=1in]{geometry}   
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage{placeins}
+\usepackage{float}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{csquotes}
+\usepackage{colortbl}
+\definecolor{Gray}{gray}{0.85}
+\newcolumntype{a}{>{\columncolor{Gray}}c}
+\newcolumntype{b}{>{\columncolor{white}}c}
+
+\begin{document}
+
+% make section headers less obnoxiously large, add italics
+\makeatletter
+\renewcommand\section{\@startsection {section}{1}{\z@}%
+                                   {-1.5ex\@plus -1ex \@minus -.2ex}%
+                                   {.75ex \@plus .2ex}%
+                                   {\normalfont\normalsize\bfseries}}% 
+\renewcommand\subsection{\@startsection{subsection}{2}{\z@}%
+                                   {-1.0ex\@plus -1ex \@minus -.2ex}%
+                                   {.5ex \@plus .2ex}%
+                                   {\normalfont\normalsize\itshape}}%
+\makeatother
+
+
+\title{\vspace{-10pt} Social Divisions in Data}
+       
+\author{\textit{Simon Couch, 16 December 2019}}
+
+\date{}
+
+\maketitle
+
+\doublespace
+
+\input{Introduction.tex}
+\input{Methods.tex}
+\input{Results.tex}
+\input{Discussion.tex}
+
+\clearpage
+
+\bibliographystyle{plain}
+\bibliography{sources.bib}
+
+\clearpage
+
+\appendix
+\input{Appendix.tex}
+
+\end{document}
