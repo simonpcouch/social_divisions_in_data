@@ -37,7 +37,8 @@ named.
 <img src="paper/figures/common_entries.png" title=" " alt=" " width="75%" />
 
 Altogether, then, I argue that sex and gender are viewed as
-interchangeable terms for the same phenomena, (more exactly, for sex,)
-and biologists are more likely to use the term \`\`Sex’’ in order to
+interchangeable terms for the same phenomena (more exactly, for sex),
+and biologists are more likely to use the term “Sex” in order to
 suggest a more purely biological mechanism for effects observed in the
-data.
+data. The full paper is named *Couch_Social_Divisions_2019.pdf* in this 
+repository.
