@@ -1,44 +1,20 @@
 
-### Social Divisions in Data
+### Social Categorizations in CRAN Data
 
 *Simon P. Couch*
 
-This is a research compendium for “Social Divisions in Data,” a term
-paper for SOC 326 (Science and Social Difference) at Reed College in
-Fall 2019.
+The Comprehensive R Archive Network now hosts over 15,000 R packages, many of 
+which provide datasets supplying demographic information on people. How do the 
+choices that R users make in constructing datasets reflect their understandings
+of social categories? Are these decisions patterned by discipline? Rather than 
+viewing datasets as “raw” or unargumentative, I argue that the way we name 
+columns, write descriptions of these columns in codebooks, construct categories
+within which subjects must identify (or be assigned), and assign numerical 
+(and by extension, ordinal) values to categories is a process of argumentation. 
+Using CRAN data, I attempt to characterize how sex, gender, race, and ethnicity 
+are conceptualized by this influential portion of the R community, and draw 
+from intersectional feminist literature to reflect on best practices for 
+encoding social divisions more thoughtfully.
 
-Rather than viewing datasets as unargumentative, sterile, or “raw,” I
-argue that datasets, and operations carried out on them, express the
-social conceptualizations held by their creators. Especially in
-reference to social categorizations and identities, naming columns;
-writing descriptions of these columns in codebooks; constructing
-categories within which subjects must identify (or be assigned); binning
-entries on a continuous scale into discrete categories; naming these new
-categories; constructing and naming new categories within columns from
-pre-existing categories; constructing and naming new columns from
-pre-existing columns; and assigning numerical (and by extension,
-ordinal) values to categories is a process of argumentation,
-claims-making, and boundary work. More specifically, in this paper, I
-examine how sex, gender, race, and ethnicity are named and encoded as
-variables in data, and how this process is patterned by the identities
-held by the datasets’ creators.
-
-Namely, I first argue that, when measuring sex/gender and race/ethnicity
-effects, biologists are more likely to name their columns sex or race
-rather than gender or ethnicity,
-respectively.
-
-<img src="paper/figures/common_names.png" title=" " alt=" " width="75%" />
-
-Then, I attempt to show that the distributions within these columns are,
-in fact, nearly identical, regardless of what the column is
-named.
-
-<img src="paper/figures/common_entries.png" title=" " alt=" " width="75%" />
-
-Altogether, then, I argue that sex and gender are viewed as
-interchangeable terms for the same phenomena (more exactly, for sex),
-and biologists are more likely to use the term “Sex” in order to
-suggest a more purely biological mechanism for effects observed in the
-data. The full paper is named *Couch_Social_Divisions_2019.pdf* in this 
+The full paper is named *Couch_Social_Divisions_2019.pdf* in this 
 repository.
