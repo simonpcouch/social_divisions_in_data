@@ -329,4 +329,118 @@ divisions %>%
 
 From this summary, we can see that we have insufficient data to test this hypothesis, as there aren't enough counts in our "black", "white" bins for the ethnicity column. The implementation would look identical to that to test hypothesis $2(a)$.
 
+We'll also build some similar plots for presentation slides.
+
+
+```{r}
+library(patchwork)
+
+# sex/gender column names as a proportion of total
+column_names_prop <- divisions %>%
+  mutate(purpose = case_when(intent == "biological" ~ "Biological",
+                             TRUE ~ "Other"),
+         clean_column = case_when(column == "ethnic" ~ "Ethnicity",
+                                  column == "female" ~ "other",
+                                  column == "male" ~ "other",
+                                  column == "gender" ~ "Gender",
+                                  column == "race" ~ "Race",
+                                  column == "sex" ~ "Sex")) %>%
+  filter(clean_column %in% c("Sex", "Gender")) %>%
+  group_by(purpose, clean_column) %>%
+  summarize(n = n()) %>%
+  ungroup() %>%
+  ggplot() +
+  aes(x = purpose, y = n, fill = clean_column) +
+  scale_fill_manual(values = c("#dc322f", "#657b83")) +
+  geom_col(position = "fill") +
+  #facet_wrap(~column_group, nrow = 1, scales = "free") +
+  labs(x = "Dataset Purpose", y = "Proportion", fill = "Column Name") +
+  theme_minimal() +
+  theme(panel.background = element_rect(fill = "#fdf6e3", color = "#fdf6e3"),
+        plot.background = element_rect(fill = "#fdf6e3", color = "#fdf6e3"),
+        text = element_text(color = "#657b83"),
+        axis.text = element_text(color = "#657b83"),
+        panel.spacing = unit(0,"null"),
+        plot.margin = rep(unit(0,"null"),4))
+
+# the same plot, by count rather than proportion
+column_names_count <- divisions %>%
+  mutate(purpose = case_when(intent == "biological" ~ "Biological",
+                             TRUE ~ "Other"),
+         clean_column = case_when(column == "ethnic" ~ "Ethnicity",
+                                  column == "female" ~ "other",
+                                  column == "male" ~ "other",
+                                  column == "gender" ~ "Gender",
+                                  column == "race" ~ "Race",
+                                  column == "sex" ~ "Sex")) %>%
+  filter(clean_column %in% c("Sex", "Gender")) %>%
+  group_by(purpose, clean_column) %>%
+  summarize(n = n()) %>%
+  ungroup() %>%
+  ggplot() +
+  aes(x = purpose, y = n, fill = clean_column) +
+  scale_fill_manual(values = c("#dc322f", "#657b83")) +
+  geom_col() +
+  labs(x = "Dataset Purpose", y = "Count", fill = "") +
+  theme_minimal() +
+  theme(panel.background = element_rect(fill = "#fdf6e3", color = "#fdf6e3"),
+        plot.background = element_rect(fill = "#fdf6e3", color = "#fdf6e3"),
+        text = element_text(color = "#657b83"),
+        axis.text = element_text(color = "#657b83"),
+        legend.position = "none",
+        panel.spacing = unit(0, "null"),
+        plot.margin = rep(unit(0, "null"), 4))
+
+column_names_plot <- column_names_count + column_names_prop
+
+sex_gender_names_plot
+
+ggsave(filename = "slides/figures/sex_gender_names_plot.png",
+       height = 4, width = 7,
+       plot = sex_gender_names_plot,
+       bg = "#657b83")
+
+
+# build the plot
+sex_gender_entries_plot <- divisions %>%
+  filter(column %in% c("gender", "sex")) %>%
+  #drop_na(clean_entry) %>%
+  mutate(clean_column = case_when(column == "gender" ~ "Gender",
+                                  column == "sex" ~ "Sex"), 
+         clean_column = factor(clean_column,
+                               levels = c("Gender", "Sex")),
+         purpose = case_when(intent == "biological" ~ "Biological",
+                             TRUE ~ "Other"),
+         clean_entry_bin = case_when(
+           clean_entry == "female" & column %in% c("gender", "sex") ~ "Female",
+           clean_entry == "male" & column %in% c("gender", "sex") ~ "Male",
+           TRUE ~ "Some Other Entry"),
+         clean_entry_bin = factor(clean_entry_bin,
+                                  levels = c("Female", "Male", "Some Other Entry"))) %>%
+  group_by(clean_column, clean_entry_bin) %>%
+  summarize(n = n()) %>%
+  mutate(prop = n/sum(n, na.rm = TRUE)) %>%
+  #arrange(desc(n)) %>%
+  ungroup() %>%
+  ggplot() +
+  aes(x = clean_entry_bin, y = prop, fill = clean_column) +
+  geom_col(position = "dodge") +
+  theme_minimal() +
+  labs(y = "Proportion", 
+       x = "Column Entry",
+       fill = "Column Name") +
+  scale_fill_manual(values = c("#dc322f", "#657b83")) +
+    theme(panel.background = element_rect(fill = "#fdf6e3", color = "#fdf6e3"),
+        plot.background = element_rect(fill = "#fdf6e3", color = "#fdf6e3"),
+        text = element_text(color = "#657b83"),
+        axis.text = element_text(color = "#657b83"),
+        panel.spacing = unit(0, "null"))
+
+sex_gender_entries_plot
+
+ggsave(filename = "slides/figures/sex_gender_entries_plot.png",
+       height = 4, width = 7,
+       plot = sex_gender_entries_plot,
+       bg = "#657b83")
+```
 
